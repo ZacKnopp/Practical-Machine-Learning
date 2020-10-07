@@ -1,0 +1,178 @@
+---
+title: "Practical machine Learning Course Project"
+author: "Zac Knopp"
+date: "08/10/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+Data
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment.
+
+
+
+## Load the Caret and RandomForest packages
+
+Note that the practical Machine Learning data.Rdata is what holds the trained models
+
+For performance reasons I didn't want to retrain them while creating this page, hence why they were saved and loaded in.
+
+```{r load packages}
+load("M:/Analytics Team/Machine Learning/practical Machine Learning/data/processed/practical Machine Learning data.Rdata")
+library(caret)
+library(randomForest)
+```
+
+## Load the 2 pml data sets
+
+When loading the testing and training data sets, I wanted to remove the extra index colomn at the start of the sheet. 
+
+Hence the: [, -1]
+
+```{r load}
+training <- read.csv("M:/Analytics Team/Machine Learning/practical Machine Learning/data/pml-training.csv")[, -1]
+testing <- read.csv("M:/Analytics Team/Machine Learning/practical Machine Learning/data/pml-testing.csv")[, -1]
+```
+
+## Remove columns with NA or is empty
+
+There are a lot of columns that have large amount of NA values or are empty
+
+I'm assuming these columns won't be very useful during the training process
+
+```{r clean}
+subTrain <- training[, names(training)[sapply(training, function (x)! (any(is.na(x) | x == "")))]]
+
+subTrain <- subTrain[, names(subTrain)[!(nzv(subTrain, saveMetrics = T)[, 4])]]
+```
+
+## Set seed for reproducable results
+```{r seed}
+set.seed(42)
+```
+
+I read on some forums that setting the target value to a factor can help with performace 
+```{r factor}
+subTrain$classe <- as.factor(subTrain$classe)
+```
+
+
+## Split the clean training data set into a validation and training data set
+
+This means we will end up have 3 data sets, Training, Validation that we testing the training on and the final Test set that we will use for the final prediction 
+
+```{r partition}
+inTrain <- createDataPartition(subTrain$classe, p = 0.65, list = FALSE)
+
+subTraining <- subTrain[inTrain,]
+subValidation <- subTrain[-inTrain,]
+```
+
+
+## Creating the model 
+
+I wanted to try stacking a few models together to see if I could improve the results of any given one
+
+I had chosen to run a Random Forest, a Boosting method and a Linear Descriminant Analysis to make up my stack
+
+When re-running this code feel free to uncomment the train statments, they take a while to run on my machine which is why they are commented out
+
+```{r Train}
+#fitRF <- train(classe ~. , data = subTraining, method  = "rf")
+#fitGBM <- train(classe ~. , data = subTraining, method  = "gbm", verbose=FALSE)
+#fitLDA <- train(classe ~. , data = subTraining, method  = "lda")
+
+prRF <- predict(fitRF, subValidation)
+prGBM <- predict(fitGBM, subValidation)
+prLDA <- predict(fitLDA, subValidation)
+
+combo <- data.frame(prRF, prGBM, prLDA, classe = subValidation$classe)
+
+#fitCombo <- train(classe ~. , data = combo, method="rf")
+
+prCombo <- predict(fitCombo, combo)
+```
+
+
+
+## Validation
+
+This has been a very successful model, generally speaking a good model would have an accuracy of higher than 0.8 
+
+The models accuracy came out at 0.9988
+
+```{r val}
+confusionMatrix(prCombo, subValidation$classe)
+```
+
+I wanted to check to see if my stacked model was better than using any of the previous models by themselves
+
+```{r comparision}
+print(paste0("RF accuracy = ", confusionMatrix(prRF, subValidation$classe)$overall['Accuracy']))
+print(paste0("GBM accuracy = ", confusionMatrix(prGBM, subValidation$classe)$overall['Accuracy']))
+print(paste0("LDA accuracy = ", confusionMatrix(prLDA, subValidation$classe)$overall['Accuracy']))
+print(paste0("Stacked accuracy = ", confusionMatrix(prCombo, subValidation$classe)$overall['Accuracy']))
+
+```
+
+These are the variables that I ended up using 
+
+```{r var}
+varImp(fitCombo)
+```
+
+## Apply model to Final Testing dataset for prediction 
+
+remove the same columns from the Test set than I removed from the Training set
+
+```{r columns}
+subTest <- testing[, names(testing)[sapply(testing, function (x)! (any(is.na(x) | x == "")))]]
+
+subTest <- subTest[, names(subTest)[!(nzv(subTest, saveMetrics = T)[, 4])]]
+
+names(subTest)
+```
+
+
+create the combo_test data frame used for the final prediction 
+
+```{r test predict}
+prRF <- predict(fitRF, subTest[, -59])
+prGBM <- predict(fitGBM, subTest[, -59])
+prLDA <- predict(fitLDA, subTest[, -59])
+
+combo_test <- data.frame(prRF, prGBM, prLDA)
+```
+
+## Final prediction 
+
+This got 100% correct in the final prediction quiz
+
+```{r Final predict}
+finalPrediction <- predict(fitCombo, combo_test)
+finalPrediction
+```
+
+
+
+
+
+
+
+
